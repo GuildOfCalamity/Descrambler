@@ -705,16 +705,16 @@ namespace Descrambler
         /// Thread-safe method via <see cref="ValueTask{T}"/>
         /// </summary>
         /// <param name="tb"><see cref="TextBox"/></param>
-        //public ValueTask<string> GetContentsAsync(TextBox tb)
-        //{
-        //    if (tb.InvokeRequired)
-        //        return new ValueTask<string>(tb.Invoke(new Func<string>(() => tb.Text)) as string);
-        //    else
-        //    {
-        //        try { return new ValueTask<string>(tb.Text); }
-        //        catch (Exception ex) { return ValueTask.FromException<string>(ex); }
-        //    }
-        //}
+        public ValueTask<string> GetContentsValueTask(TextBox tb)
+        {
+            if (tb.InvokeRequired)
+                return new ValueTask<string>(tb.Invoke(new Func<string>(() => tb.Text)) as string);
+            else
+            {
+                try { return new ValueTask<string>(tb.Text); }
+                catch (Exception ex) { return ValueTask.FromException<string>(ex); }
+            }
+        }
 
         /// <summary>
         /// Thread-safe method
