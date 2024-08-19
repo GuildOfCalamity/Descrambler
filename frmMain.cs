@@ -8,8 +8,10 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Descrambler.Properties;
@@ -18,8 +20,31 @@ namespace Descrambler
 {
     public partial class frmMain : Form
     {
+        bool _roundedBorderless = true;
         static string lastWord = "";
         static Unscramble engine = new Unscramble();
+
+        #region [rounded-borderless]
+        [DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
+        static extern IntPtr CreateRoundRectRgn
+        (
+            int nLeftRect,
+            int nTopRect,
+            int nRightRect,
+            int nBottomRect,
+            int nWidthEllipse,
+            int nHeightEllipse
+        );
+        #endregion
+        
+        #region [click-n-drag]
+        public const int WM_NCLBUTTONDOWN = 0xA1;
+        public const int HT_CAPTION = 0x2;
+        [DllImport("user32.dll")]
+        static extern bool ReleaseCapture();
+        [DllImport("user32.dll")]
+        static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+        #endregion
 
         /// <summary>
         /// [Original Article]
@@ -27,10 +52,61 @@ namespace Descrambler
         /// </summary>
         public frmMain()
         {
+            Application.ThreadException += Application_ThreadException;
             InitializeComponent();
+
+            if (_roundedBorderless)
+            {
+                this.Text = Program.GetCurrentNamespace();
+                this.FormBorderStyle = FormBorderStyle.None;
+                this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, this.Width, this.Height, 16, 16));
+            }
+            else
+                this.Text = ""; // Doesn't seem to play well with the DwmApi calls unless ALLOW_NCPAINT is also used.
+
+            #region [Acrylic Background]
+            // This will determine the glass accent color.
+            this.BackColor = Color.FromArgb(20, 20, 29);
+
+            if (DwmHelper.IsDWMCompositionEnabled())
+            {
+                // If the version is not being observed correctly
+                // then make sure to add app.manifest to the project.
+                if (Environment.OSVersion.Version.Major > 6)
+                {
+                    DwmHelper.Windows10EnableBlurBehind(this.Handle);
+                    // Enables content rendered in the non-client area to be visible on the frame drawn by DWM.
+                    //DwmHelper.WindowSetAttribute(this.Handle, DwmHelper.DWMWINDOWATTRIBUTE.AllowNCPaint, 1);
+                }
+                else
+                {   // This will also work for Windows 10+, but the effect is
+                    // only a transparency and not the acrylic/glass effect.
+                    DwmHelper.WindowEnableBlurBehind(this.Handle);
+                }
+
+                // Set Drop shadow of a border-less Form
+                if (this.FormBorderStyle == FormBorderStyle.None)
+                    DwmHelper.WindowBorderlessDropShadow(this.Handle, 2);
+            }
+            #endregion
         }
+        void Application_ThreadException(object sender, ThreadExceptionEventArgs e) => Debug.WriteLine($"[ERROR] ThreadException: {e.Exception.Message}");
 
         #region [UI Events]
+        void frmMain_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (!_roundedBorderless)
+                return;
+
+            if (e.Button == MouseButtons.Left)
+            {
+                ReleaseCapture();
+                SendMessage(this.Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
+            }
+            else if (e.Button == MouseButtons.Right)
+                this.Close(); //Application.Exit();
+        }
+
         void frmMain_Shown(object sender, EventArgs e)
         {
             LoadSettings();
@@ -48,6 +124,7 @@ namespace Descrambler
             ToolTip tt1 = new ToolTip() { IsBalloon = true, AutoPopDelay = 5000, InitialDelay = 500, ReshowDelay = 500, ShowAlways = true, UseFading = true, UseAnimation = true };
             tt1.SetToolTip(tbScrambled, "The word to unscramble");
             tt1.SetToolTip(tbResult, "The unscrambled result");
+            tt1.SetToolTip(this, "Right-click here to exit");
             #endregion
 
             btnDecode.FlatAppearance.MouseOverBackColor = Color.Transparent;
@@ -108,7 +185,7 @@ namespace Descrambler
                     {
                         AppendTextBox(tbResult, $"{str}\r\n");
                     }
-                    SetText(lblStatus, $"Matches: {engine.GetMatchCount()}    Time: {engine.GetMatchTime()}");
+                    SetText(lblStatus, $"Matches: {engine.GetMatchCount()}    Time: {ToReadableString(engine.GetMatchTime())}");
                     Debug.WriteLine($"[INFO] Filtered set: {engine.GetFilterCount()} out of {engine.GetDictionaryCount()}");
                 }
                 else
@@ -137,6 +214,37 @@ namespace Descrambler
                 ToggleEnabled(tbScrambled, true);
                 SetControlCursor(this, Cursors.Arrow);
             }
+        }
+
+        /// <summary>
+        /// Similar to <see cref="GetReadableTime(TimeSpan)"/>.
+        /// </summary>
+        /// <param name="timeSpan"><see cref="TimeSpan"/></param>
+        /// <returns>formatted text</returns>
+        string ToReadableString(TimeSpan span)
+        {
+            //return string.Format("{0}{1}{2}{3}",
+            //    span.Duration().Days > 0 ? string.Format("{0:0} day{1}, ", span.Days, span.Days == 1 ? string.Empty : "s") : string.Empty,
+            //    span.Duration().Hours > 0 ? string.Format("{0:0} hr{1}, ", span.Hours, span.Hours == 1 ? string.Empty : "s") : string.Empty,
+            //    span.Duration().Minutes > 0 ? string.Format("{0:0} min{1}, ", span.Minutes, span.Minutes == 1 ? string.Empty : "s") : string.Empty,
+            //    span.Duration().Seconds > 0 ? string.Format("{0:0} sec{1}", span.Seconds, span.Seconds == 1 ? string.Empty : "s") : string.Empty);
+
+            var parts = new StringBuilder();
+            if (span.Days > 0)
+                parts.Append($"{span.Days} day{(span.Days == 1 ? string.Empty : "s")} ");
+            if (span.Hours > 0)
+                parts.Append($"{span.Hours} hour{(span.Hours == 1 ? string.Empty : "s")} ");
+            if (span.Minutes > 0)
+                parts.Append($"{span.Minutes} minute{(span.Minutes == 1 ? string.Empty : "s")} ");
+            if (span.Seconds > 0)
+                parts.Append($"{span.Seconds} second{(span.Seconds == 1 ? string.Empty : "s")} ");
+            if (span.Milliseconds > 0)
+                parts.Append($"{span.Milliseconds} millisecond{(span.Milliseconds == 1 ? string.Empty : "s")} ");
+
+            if (parts.Length == 0) // result was less than 1 millisecond
+                return $"{span.TotalMilliseconds:N4} milliseconds";
+            else
+                return parts.ToString().Trim();
         }
 
         /// <summary>
