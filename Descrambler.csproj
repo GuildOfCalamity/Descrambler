@@ -9,6 +9,7 @@
     <RootNamespace>Descrambler</RootNamespace>
     <AssemblyName>Descrambler</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <LangVersion>9.0</LangVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <Deterministic>true</Deterministic>
@@ -56,6 +57,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Support\BasicTask.cs" />
     <Compile Include="Support\DwmHelper.cs" />
     <Compile Include="frmMain.cs">
       <SubType>Form</SubType>
