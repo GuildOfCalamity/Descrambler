@@ -91,6 +91,7 @@
             this.tbResult.Size = new System.Drawing.Size(402, 114);
             this.tbResult.TabIndex = 2;
             this.tbResult.Click += new System.EventHandler(this.tbResult_Click);
+            this.tbResult.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.tbResult_KeyPress);
             // 
             // lblStatus
             // 
@@ -123,6 +124,7 @@
             this.Text = "Descrambler";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.frmMain_FormClosing);
             this.Shown += new System.EventHandler(this.frmMain_Shown);
+            this.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.frmMain_KeyPress);
             this.MouseDown += new System.Windows.Forms.MouseEventHandler(this.frmMain_MouseDown);
             this.ResumeLayout(false);
             this.PerformLayout();

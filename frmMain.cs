@@ -14,7 +14,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Descrambler.Properties;
+
 
 namespace Descrambler
 {
@@ -52,7 +52,24 @@ namespace Descrambler
         /// </summary>
         public frmMain()
         {
-            Application.ThreadException += Application_ThreadException;
+            #region [Testing another way to determine when the form is shown]
+            if (Program.IsDebugBuild)
+            {
+                var tsk = IdleYield();
+                BasicTask.Run(() =>
+                {
+                    while (!tsk.IsCompleted)
+                    {
+                        Debug.WriteLine($"[INFO] Application.Idle: {tsk.IsCompleted}");
+                        Thread.Sleep(100);
+                    }
+                    Debug.WriteLine($"[INFO] Application.Idle: {tsk.IsCompleted}");
+                });
+            }
+            #endregion
+
+            this.KeyPreview = true;
+
             InitializeComponent();
 
             if (_roundedBorderless)
@@ -64,9 +81,9 @@ namespace Descrambler
             else
                 this.Text = ""; // Doesn't seem to play well with the DwmApi calls unless ALLOW_NCPAINT is also used.
 
-            #region [Acrylic Background]
+            #region [Acrylic background]
             // This will determine the glass accent color.
-            this.BackColor = Color.FromArgb(20, 20, 29);
+            this.BackColor = Color.FromArgb(20, 20, 30);
 
             if (DwmHelper.IsDWMCompositionEnabled())
             {
@@ -89,8 +106,24 @@ namespace Descrambler
                     DwmHelper.WindowBorderlessDropShadow(this.Handle, 2);
             }
             #endregion
+
         }
-        void Application_ThreadException(object sender, ThreadExceptionEventArgs e) => Debug.WriteLine($"[ERROR] ThreadException: {e.Exception.Message}");
+
+        /// <summary>
+        /// WinForms idle yield example.
+        /// </summary>
+        public static Task IdleYield()
+        {
+            var idleTcs = new TaskCompletionSource<bool>();
+            EventHandler handler = null;
+            handler = (s, e) =>
+            {
+                Application.Idle -= handler;
+                idleTcs.SetResult(true);
+            };
+            Application.Idle += handler;
+            return idleTcs.Task;
+        }
 
         #region [UI Events]
         void frmMain_MouseDown(object sender, MouseEventArgs e)
@@ -104,7 +137,10 @@ namespace Descrambler
                 SendMessage(this.Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
             }
             else if (e.Button == MouseButtons.Right)
-                this.Close(); //Application.Exit();
+            {
+                //Application.Exit();
+                this.Close();
+            }
         }
 
         void frmMain_Shown(object sender, EventArgs e)
@@ -112,7 +148,7 @@ namespace Descrambler
             LoadSettings();
             if (string.IsNullOrEmpty(lastWord))
             {
-                SetText(tbScrambled, "girngeeenin");
+                SetText(tbScrambled, "trdese");
             }
             else
             {
@@ -129,6 +165,7 @@ namespace Descrambler
 
             btnDecode.FlatAppearance.MouseOverBackColor = Color.Transparent;
             btnDecode.FlatAppearance.MouseDownBackColor = Color.Transparent;
+            btnDecode.TabStop = false;
 
             SetControlCursor(tbScrambled, Cursors.Hand);
             SetControlCursor(tbResult, Cursors.Hand);
@@ -155,9 +192,35 @@ namespace Descrambler
 
         void tbScrambled_KeyPress(object sender, KeyPressEventArgs e)
         {
-            if (e.KeyChar == '\r')
+            if (e.KeyChar == '\r') // Enter
             {
                 btnDecode_Click(this, new EventArgs());
+                e.Handled = true;
+            }
+            else if (e.KeyChar == '\u001b') // Esc
+            {
+                this.Close();
+                e.Handled = true;
+            }
+        }
+
+        void tbResult_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (e.KeyChar == '\u001b') // Esc
+            {
+                this.Close();
+                e.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// NOTE: This only works if the <see cref="System.Windows.Forms.Form.KeyPreview"/> is set to true.
+        /// </summary>
+        void frmMain_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (e.KeyChar == '\u001b') // Esc
+            {
+                this.Close();
                 e.Handled = true;
             }
         }
@@ -309,6 +372,22 @@ namespace Descrambler
             {
                 Debug.WriteLine($"[ERROR] Settings could not be saved: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// <example><code>
+        ///     var ctrl = GetAllControls(this, typeof(TextBox));
+        /// </code></example>
+        /// </summary>
+        /// <param name="control">root control to traverse</param>
+        /// <param name="type">type of control to find</param>
+        /// <returns><see cref="IEnumerable{T}"/></returns>
+        public IEnumerable<Control> GetAllControls(Control control, Type type)
+        {
+            var controls = control.Controls.Cast<Control>();
+            return controls.SelectMany(ctrl => GetAllControls(ctrl, type))
+                                      .Concat(controls)
+                                      .Where(c => c != null && c.GetType() == type);
         }
         #endregion
 
@@ -517,7 +596,7 @@ namespace Descrambler
                 if (cursor != null)
                     ctrl.Cursor = cursor;
                 else
-                    ctrl.Cursor = Cursor.Current; // ctrl.Cursor = Cursors.Arrow
+                    ctrl.Cursor = System.Windows.Forms.Cursor.Current; // ctrl.Cursor = Cursors.Arrow
 
                 #region [loading from stream]
                 //using (MemoryStream cursorStream = new MemoryStream(Resources.pointer1))
@@ -587,6 +666,7 @@ namespace Descrambler
         /// Thread-safe method
         /// </summary>
         /// <param name="ctrl"><see cref="Control"/></param>
+        /// <remarks>centering based on main form</remarks>
         public void CenterControl(Control ctrl)
         {
             if (InvokeRequired)
@@ -617,7 +697,7 @@ namespace Descrambler
         /// Thread-safe method
         /// </summary>
         /// <param name="ctrl"><see cref="Control"/></param>
-        /// <param name="state">true=enabled, false=disabled</param>
+        /// <param name="state">true=visible, false=invisible</param>
         public void ToggleVisible(Control ctrl, bool state)
         {
             if (InvokeRequired)
@@ -798,6 +878,7 @@ namespace Descrambler
         /// </code></example>
         /// </summary>
         /// <param name="tb"><see cref="TextBox"/></param>
+        /// <param name="callback"><see cref="Action{T}"/></param>
         public void GetContentsAsync(TextBox tb, Action<string> callback)
         {
             if (InvokeRequired)
@@ -827,7 +908,8 @@ namespace Descrambler
         /// <summary>
         /// Thread-safe method
         /// </summary>
-        /// <param name="data">text to add to log</param>
+        /// <param name="data">text to add to <paramref name="lb"/></param>
+        /// <param name="timeStamp">true=include time, false=omit time</param>
         public void AddToListBox(ListBox lb, string data = "", bool timeStamp = false)
         {
             if (InvokeRequired)
@@ -848,7 +930,8 @@ namespace Descrambler
         /// <summary>
         /// Thread-safe method
         /// </summary>
-        /// <param name="items"><see cref="List{T}"/> of items to add</param>
+        /// <param name="items"><see cref="List{T}"/> of items to add to <paramref name="lb"/></param>
+        /// <param name="timeStamp">true=include time, false=omit time</param>
         public void AddToListBox(ListBox lb, List<string> items, bool timeStamp = false)
         {
             if (InvokeRequired)
@@ -892,6 +975,7 @@ namespace Descrambler
         /// Thread-safe method
         /// </summary>
         /// <param name="data">text to add to log</param>
+        /// <param name="timeStamp">true=include time, false=omit time</param>
         public void AddToListView(ListView lv, string data = "", bool timeStamp = false)
         {
             if (InvokeRequired)
@@ -909,6 +993,7 @@ namespace Descrambler
         /// Thread-safe method
         /// </summary>
         /// <param name="items"><see cref="List{T}"/> of items to add</param>
+        /// <param name="timeStamp">true=include time, false=omit time</param>
         public void AddToListView(ListView lv, List<string> items, bool timeStamp = false)
         {
             if (InvokeRequired)
@@ -928,12 +1013,12 @@ namespace Descrambler
         }
 
         /// <summary>
-        /// <see cref="System.Windows.Forms.View"/> options...
-        /// LargeIcon: Each item appears as a full-sized icon with a label below it.
-        /// Details: Each item appears on a separate line with further information about each item arranged in columns.
-        /// SmallIcon: Each item appears as a small icon with a label to its right.
-        /// List: Each item appears as a small icon with a label to its right.
-        /// Tile: Each item appears as a full-sized icon with the item label and subitem information to the right of it.
+        /// <para><see cref="System.Windows.Forms.View"/> options</para>
+        /// <para>LargeIcon: Each item appears as a full-sized icon with a label below it.</para>
+        /// <para>Details: Each item appears on a separate line with further information about each item arranged in columns.</para>
+        /// <para>SmallIcon: Each item appears as a small icon with a label to its right.</para>
+        /// <para>List: Each item appears as a small icon with a label to its right.</para>
+        /// <para>Tile: Each item appears as a full-sized icon with the item label and subitem information to the right of it.</para>
         /// </summary>
         public void SetListViewView(ListView lv, System.Windows.Forms.View view)
         {
@@ -969,7 +1054,6 @@ namespace Descrambler
         /// Thread-safe method
         /// </summary>
         /// <param name="tb"><see cref="TextBox"/></param>
-        /// <param name="data">text to append</param>
         public void ClearTextBox(TextBox tb)
         {
             if (InvokeRequired)
@@ -982,6 +1066,8 @@ namespace Descrambler
         /// Thread-safe method
         /// </summary>
         /// <param name="tb"><see cref="TextBox"/></param>
+        /// <param name="target">text to find</param>
+        /// <param name="replacement">text to replace <paramref name="target"/> with</param>
         public void ReplaceTextBox(TextBox tb, string target, string replacement = "")
         {
             if (InvokeRequired)
@@ -993,6 +1079,7 @@ namespace Descrambler
         /// <summary>
         /// Thread-safe method
         /// </summary>
+        /// <param name="item">object to remove</param>
         public void RemoveItemFromListBox(ListBox listBox, object item)
         {
             if (listBox.InvokeRequired)
